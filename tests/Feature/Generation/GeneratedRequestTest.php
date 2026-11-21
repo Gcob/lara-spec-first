@@ -2874,12 +2874,14 @@ it('keeps what a shaped name triggers, and what makes it required', function (st
 })->with(['application/x-www-form-urlencoded', 'multipart/form-data']);
 
 /**
- * A `POST` with a form body made of the given properties, every one an integer but the ones named in `$strings`.
+ * A `POST` with a form body made of the given properties, every one an integer but the ones named in `$strings`
+ * (strings) and `$objects` (objects with no property of their own).
  *
  * @param  list<string>  $names
  * @param  list<string>  $strings
+ * @param  list<string>  $objects
  */
-function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = []): Operation
+function postWithBracketedNames(string $mediaType, array $names, bool $closed, array $strings = [], array $objects = []): Operation
 {
     return new Operation(
         index: 0,
@@ -2889,7 +2891,11 @@ function postWithBracketedNames(string $mediaType, array $names, bool $closed, a
         requestBody: new RequestBody([$mediaType => new Schema(
             types: [SchemaType::Object],
             properties: array_map(
-                static fn (string $name): Schema => new Schema(types: [in_array($name, $strings, true) ? SchemaType::String : SchemaType::Integer]),
+                static fn (string $name): Schema => new Schema(types: [match (true) {
+                    in_array($name, $strings, true) => SchemaType::String,
+                    in_array($name, $objects, true) => SchemaType::Object,
+                    default => SchemaType::Integer,
+                }]),
                 array_combine($names, $names),
             ),
             additionalProperties: $closed ? false : null,
@@ -2938,9 +2944,9 @@ it('loads the class of a closed form body that declares a key with an apostrophe
 
 // PHP drops what follows a closing bracket, so `a[c]` and `a[c]x` both arrive as `a.c`: the pair builds (the DTO names
 // differ) and a form delivers it under one key. A closed body closes the level above (`a` takes only `c`), but the shared
-// key has no rule, so what arrives under it is not checked, and `validated()` keeps it. An open body checks nothing.
+// key has no rule, so what arrives under it is not checked, and `validated()` leaves it out. An open body checks nothing.
 // Payloads are what PHP delivers: `Request::create()` does not parse a wire string.
-it('closes the level above two names a form delivers under one key, and checks nothing below it', function (
+it('closes the level above two names a form delivers under one key, and leaves their key out of validated()', function (
     bool $closed,
     array $parameters,
     int $status,
@@ -2954,11 +2960,9 @@ it('closes the level above two names a form delivers under one key, and checks n
         ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
 })->with([
     'an undeclared key beside them' => [true, ['a' => ['evil' => '1']], 422, ['a']],
-    // TODO (#206): the three rows below that answer 200 carry a value nobody checked in `validated()`: flip each answer
-    // to `[]` when it stops.
-    'the shared key, not a number' => [true, ['a' => ['c' => 'abc']], 200, ['a' => ['c' => 'abc']]],
-    'an array under the shared key' => [true, ['a' => ['c' => ['evil' => '1']]], 200, ['a' => ['c' => ['evil' => '1']]]],
-    'the shared key, a number' => [true, ['a' => ['c' => '5']], 200, ['a' => ['c' => '5']]],
+    'the shared key, not a number' => [true, ['a' => ['c' => 'abc']], 200, ['a' => []]],
+    'an array under the shared key' => [true, ['a' => ['c' => ['evil' => '1']]], 200, ['a' => []]],
+    'the shared key, a number' => [true, ['a' => ['c' => '5']], 200, ['a' => []]],
     'open: an undeclared key' => [false, ['a' => ['evil' => '1']], 200, []],
     'open: the shared key' => [false, ['a' => ['c' => 'abc']], 200, []],
 ]);
@@ -2971,6 +2975,89 @@ it('reads a[c] and a[c]x from a form body as the same key', function (): void {
     expect($both)->toBe(['a' => ['c' => '2']])
         ->and($suffixed)->toBe(['a' => ['c' => '2']]);
 });
+
+// Laravel's `validated()` keeps a whole array under a rule that is not a bare `array`, so a closed level (`array:c,d`)
+// hands back everything under it. A key of that level no rule judges (the shared key of a pair, a name typed `object`)
+// is left out with `exclude`, and a key a ruled name sits below is judged by shape: a value that is not an array is left
+// out, and the array holds only the keys declared below it. Names are space-separated, and the second column holds the
+// ones typed `object`. Payloads are what PHP delivers.
+it('leaves out of validated() a key of a closed form level that no rule judges', function (
+    string $names,
+    string $objects,
+    array $parameters,
+    int $status,
+    array $answer,
+): void {
+    $class = emittedRequestClass(postWithBracketedNames(
+        'application/x-www-form-urlencoded',
+        explode(' ', $names),
+        true,
+        objects: $objects === '' ? [] : explode(' ', $objects),
+    ));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with([
+    'the pair beside a ruled name' => ['a[c] a[c]x a[d]', '', ['a' => ['c' => 'abc', 'd' => '5']], 200, ['a' => ['d' => '5']]],
+    'the pair beside a ruled name, a bad ruled value' => ['a[c] a[c]x a[d]', '', ['a' => ['d' => 'x']], 422, ['a.d']],
+    'a deeper pair' => ['f[a][c] f[a][c]x', '', ['f' => ['a' => ['c' => 'abc']]], 200, ['f' => ['a' => []]]],
+    'a deeper pair, an undeclared key beside it' => ['f[a][c] f[a][c]x', '', ['f' => ['a' => ['evil' => '1']]], 422, ['f.a']],
+    'a ruled name below the shared key, a scalar' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => 'abc']], 200, ['a' => []]],
+    'a ruled name below the shared key, a number' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => '5']], 200, ['a' => []]],
+    'a ruled name below the shared key, the ruled name' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['d' => '5']]], 200, ['a' => ['c' => ['d' => '5']]]],
+    'a ruled name below the shared key, a bad ruled value' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['d' => 'x']]], 422, ['a.c.d']],
+    'a ruled name below the shared key, an undeclared key below it' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['evil' => '1']]], 422, ['a.c']],
+    'a ruled name below the shared key, an undeclared key beside the ruled name' => ['a[c] a[c]x a[c][d]', '', ['a' => ['c' => ['d' => '5', 'evil' => '1']]], 422, ['a.c']],
+    'a ruled name and a * name below the shared key' => ['a[c] a[c]x a[c][d] a[c][*]', '', ['a' => ['c' => ['*' => '5']]], 200, ['a' => ['c' => ['*' => '5']]]],
+    // TODO (#221): a name typed `object` loses its rules below it, so these two rows answer 200 for what 0.2.0 refused.
+    // They pin only what `validated()` holds.
+    'a name typed object with a name below it' => ['x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['c' => 'abc', 'evil' => '1']]], 200, ['x' => []]],
+    'a name typed object with a name below it, beside a ruled name' => ['x[b] x[b][c] x[d]', 'x[b]', ['x' => ['b' => ['evil' => '1'], 'd' => '5']], 200, ['x' => ['d' => '5']]],
+]);
+
+// A declared `a` above names that collide below it (`a[c]` and `a[c]x`, both `a.c`): the level `a` is the one the key check
+// has to close, so `a[evil]=1` is refused instead of passing. `a`'s own value is judged as before (`a=5`), and what is sent
+// at the shared key is left out of `validated()`. Beside a ruled name (`a[d]`), the contract's `a[c]=abc&a[d]=5` passes and
+// keeps only `d`. A level two or three below `a` is refused too, since its key check is written before the rule that drops `a`.
+// The `object` rows pin only `validated()` and the level above: the rule loss below the object is #221's. Payloads are
+// what PHP delivers: `Request::create()` does not parse a wire string.
+it('refuses an undeclared key beside a declared name and the names that collide below it', function (
+    string $mediaType,
+    string $names,
+    string $objects,
+    array $parameters,
+    int $status,
+    array $answer,
+): void {
+    $class = emittedRequestClass(postWithBracketedNames(
+        $mediaType,
+        explode(' ', $names),
+        true,
+        objects: $objects === '' ? [] : explode(' ', $objects),
+    ));
+
+    [$answered, $body] = sendThroughEmitted($class, 'POST', parameters: $parameters);
+
+    expect($answered)->toBe($status)
+        ->and($status === 422 ? array_keys($body['errors']) : $body)->toBe($answer);
+})->with(['application/x-www-form-urlencoded', 'multipart/form-data'])->with([
+    'an undeclared key beside a declared name' => ['a a[c] a[c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
+    'the declared name' => ['a a[c] a[c]x', '', ['a' => '5'], 200, ['a' => '5']],
+    'the declared name, not a number' => ['a a[c] a[c]x', '', ['a' => 'abc'], 422, ['a']],
+    'the shared key' => ['a a[c] a[c]x', '', ['a' => ['c' => 'abc']], 200, []],
+    'the shared key and an undeclared one' => ['a a[c] a[c]x', '', ['a' => ['c' => '1', 'evil' => '1']], 422, ['a']],
+    'beside a ruled name, both sent' => ['a a[c] a[c]x a[d]', '', ['a' => ['c' => 'abc', 'd' => '5']], 200, ['a' => ['d' => '5']]],
+    'beside a ruled name, an undeclared key' => ['a a[c] a[c]x a[d]', '', ['a' => ['evil' => '1']], 422, ['a']],
+    'above a name typed object, an undeclared key' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['evil' => '1']], 422, ['x']],
+    // TODO (#221): the key below `x[b]` is not judged yet, so this row answers 200 for what 0.2.0 refused.
+    'above a name typed object, below it' => ['x x[b] x[b][c]', 'x[b]', ['x' => ['b' => ['evil' => '1']]], 200, []],
+    'two levels below a declared name, an undeclared key at the first' => ['a a[b][c] a[b][c]x', '', ['a' => ['evil' => '1']], 422, ['a']],
+    'two levels below a declared name, an undeclared key at the second' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['evil' => '1']]], 422, ['a.b']],
+    'two levels below a declared name, the shared key' => ['a a[b][c] a[b][c]x', '', ['a' => ['b' => ['c' => 'abc']]], 200, []],
+    'three levels below a declared name, an undeclared key at the third' => ['a a[b][c][d] a[b][c][d]x', '', ['a' => ['b' => ['c' => ['evil' => '1']]]], 422, ['a.b.c']],
+]);
 
 // A required `page` beside `page[x]` (an object) and `page[x][y]`: every name below `page` is withheld, so nothing has a
 // rule there, but the array a form builds for them still stands in for `page`. The contract wants a `page` the form

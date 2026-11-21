@@ -1015,6 +1015,7 @@ final readonly class RuleSetBuilder
         // receives. A body that is JSON too keeps the one the contract writes beside it.
         $closed = [];
         $steps = [];
+        $levelPaths = [];
         $starLevels = [];
         $appended = [];
         $accepted = [];
@@ -1041,9 +1042,15 @@ final readonly class RuleSetBuilder
 
             $closed[] = $delivered;
 
-            // A name that collided has its own finding, and the key its value arrives under is a declared name
-            // too, so the contract does not refuse it.
-            if (isset($walk->withheld[$name]) && in_array($delivered, $declared, true)) {
+            // A name that collided has its own finding, and a name delivered at a declared top-level key (`user.name` at
+            // `user_name`) is that key, which the contract does not refuse. In a closed body its key is left out of the
+            // validated data. A bracketed name in a body read only as a form still closes the levels below its head, or
+            // the file would say the key check accepts them; a body that is JSON as well never closes a level.
+            if (
+                isset($walk->withheld[$name])
+                && in_array($delivered, $declared, true)
+                && ($walk->mixedBody || count(self::deliveredPath($name) ?? []) === 1)
+            ) {
                 continue;
             }
 
@@ -1081,6 +1088,7 @@ final readonly class RuleSetBuilder
             for ($level = 1; $level < count($path); $level++) {
                 $levelKey = self::pathKey(array_slice($path, 0, $level));
                 $steps[$levelKey][$name] = $path[$level];
+                $levelPaths[$levelKey] = array_slice($path, 0, $level);
 
                 if ($appendsAt !== null && count($appendsAt) === $level) {
                     $appended[$levelKey] = true;
@@ -1126,8 +1134,25 @@ final readonly class RuleSetBuilder
             $deliveredAt[$level] = true;
         }
 
+        $kept = [];
+        $openForValue = [];
+        $dropped = [];
+
         foreach ($steps as $level => $below) {
             $level = (string) $level;
+
+            // Why: `$steps` lists a level before the levels below it (a name inserts its levels from the top down), so a
+            // level that drops its array is already in `$dropped` when the levels below it are read.
+            $underDropped = false;
+
+            foreach ($dropped as $droppedLevel) {
+                if (str_starts_with($level, $droppedLevel.'.')) {
+                    $underDropped = true;
+
+                    break;
+                }
+            }
+
             $keys = array_values(array_unique(array_values($below)));
 
             $commas = array_filter($keys, static fn (string $key): bool => str_contains($key, ',')) !== [];
@@ -1135,6 +1160,11 @@ final readonly class RuleSetBuilder
             // Why: a value can sit at the key a declared name is delivered at (`filter[a]=x`), and `array:` would
             // refuse it, so that level stays open and the finding below names what the key check accepts.
             if (isset($deliveredAt[$level]) || isset($starHeld[$level]) || $commas) {
+                // Only the value at its key keeps it open: no `*` name below, no comma, no appended key.
+                if (! isset($starHeld[$level]) && ! isset($starLevels[$level]) && ! $commas && ! isset($appended[$level])) {
+                    $openForValue[$level] = $below;
+                }
+
                 foreach (array_keys($below) as $name) {
                     $accepted[(string) $name] = $level;
                 }
@@ -1157,10 +1187,92 @@ final readonly class RuleSetBuilder
 
                 $walk->arrayKeys[$level] = $keys;
 
+                if (in_array($level, $walk->dropsArray, true)) {
+                    $dropped[] = $level;
+                } else {
+                    $kept[] = $level;
+                }
+
                 continue;
             }
 
             $walk->rules[$level] = ['sometimes', 'array:'.implode(',', $keys)];
+
+            // The array branch above removes everything below it, so there is nothing left for `exclude` to drop.
+            if (! $underDropped) {
+                $kept[] = $level;
+            }
+        }
+
+        // Why: Laravel judges the rules in the order they are written, and `exclude` takes the array out of the data for
+        // every rule written after it. The key check of a level below a dropped one goes before the rule that drops it,
+        // or it would never run and the level would accept any key.
+        foreach ($dropped as $droppedLevel) {
+            $below = array_filter(
+                $walk->rules,
+                static fn (array $rules, int|string $ruleKey): bool => str_starts_with((string) $ruleKey, $droppedLevel.'.'),
+                ARRAY_FILTER_USE_BOTH,
+            );
+
+            if ($below === []) {
+                continue;
+            }
+
+            $ordered = [];
+
+            foreach ($walk->rules as $ruleKey => $rules) {
+                if (isset($below[$ruleKey])) {
+                    continue;
+                }
+
+                if ((string) $ruleKey === $droppedLevel) {
+                    $ordered += $below;
+                }
+
+                $ordered[$ruleKey] = $rules;
+            }
+
+            $walk->rules = $ordered;
+        }
+
+        // Why: Laravel's `validated()` keeps a whole array under a rule that is not a bare `array`, so a level kept
+        // closed (`array:c`) hands back everything under its keys. A key no rule judges is left out after the key
+        // check of its level. A key a ruled name sits below is judged by shape instead: a value that is not an array is
+        // left out, and the array holds the keys declared below it (which closes the level that key opened).
+        // `$kept` grows while it is walked: a key opened for its value becomes a kept level of its own, and a level is
+        // always added after the one above it, so its keys are reached later in this same loop.
+        for ($i = 0; $i < count($kept); $i++) {
+            $level = $kept[$i];
+
+            foreach (array_values(array_unique(array_values($steps[$level]))) as $key) {
+                $child = $level.'.'.self::ruleKey($key);
+
+                if (isset($walk->rules[$child])) {
+                    continue;
+                }
+
+                $walk->rules[$child] = ['exclude'];
+
+                if (array_filter(array_keys($walk->rules), static fn (int|string $ruleKey): bool => str_starts_with((string) $ruleKey, $child.'.')) === []) {
+                    continue;
+                }
+
+                $walk->whenNotArray[$child] = [...$levelPaths[$level], $key];
+
+                if (! isset($openForValue[$child])) {
+                    continue;
+                }
+
+                $walk->arrayKeys[$child] = array_values(array_unique(array_values($openForValue[$child])));
+
+                foreach (array_keys($openForValue[$child]) as $name) {
+                    if (($accepted[(string) $name] ?? null) === $child) {
+                        unset($accepted[(string) $name]);
+                    }
+                }
+
+                $kept[] = $child;
+            }
         }
 
         if ($accepted !== []) {
@@ -3624,7 +3736,7 @@ final readonly class RuleSetBuilder
      *
      * **Two names PHP delivers as one key cannot be told apart in the data**, nor can a rewritten name and a declared
      * one that is equal to what it becomes (`user.name` and `user_name`). Neither gets a rule, and one finding names
-     * them; a name below them keeps its own.
+     * them, and a closed form body leaves their key out of the validated data; a name below them keeps its own.
      *
      * **A name above the names a form nests under it is judged by shape** (`page` beside `page[size]`, `filter[a]`
      * beside `filter[a][b]` at any depth, `ids` beside `ids[]`): its rules judge the value only when it is not an
