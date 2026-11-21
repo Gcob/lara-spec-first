@@ -107,6 +107,16 @@ it('types an optional response property', function (string $declaration, array $
     'optional and nullable' => ['public Optional|string|null $email = new Optional,', ['email' => new Schema(types: [SchemaType::String, SchemaType::Null])], []],
 ]);
 
+// Why: only a request sets a `date-time` to the app timezone. A response is built from what the application holds and
+// is written as Laravel's JSON encoding of a date is, so its `from()` keeps the timezone a value arrived in (card #241,
+// ADR 0025).
+it('leaves a response date-time in the timezone it arrived in', function (): void {
+    expect(emittedResponseDto('EventDto'))
+        ->toContain("starts_at: CarbonImmutable::parse(\$payload['starts_at']),")
+        ->toContain("\$payload['closes_at'] === null ? null : CarbonImmutable::parse(\$payload['closes_at'])");
+    expect(emittedResponseDto('EventDto'))->not->toContain('date_default_timezone_get');
+});
+
 it('matches the response DTO golden files', function (): void {
     $directory = dirname(__DIR__, 2).'/Fixtures/GeneratedResponse/Data';
     $files = array_map(static fn (string $path): string => basename($path, '.php'), glob($directory.'/*.php') ?: []);

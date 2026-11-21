@@ -1,0 +1,169 @@
+# Each operation holds one gap the generated file used to name alone: the request drops a field whole, and
+# `spec:doctor` reports what the field states, one finding per keyword and per operation.
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 1.0.0
+paths:
+  /nowhere:
+    post:
+      operationId: postNowhere
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                '[x]':
+                  type: integer
+      responses:
+        '200':
+          description: OK
+  /collision:
+    post:
+      operationId: postCollision
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                a.b:
+                  type: string
+                a_b:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /trigger:
+    post:
+      operationId: postTrigger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+              dependentRequired:
+                'a*b':
+                  - email
+      responses:
+        '200':
+          description: OK
+  /untyped-enum:
+    post:
+      operationId: postUntypedEnum
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level:
+                  enum: [1, 2, 3]
+      responses:
+        '200':
+          description: OK
+  /dotted:
+    post:
+      operationId: postDotted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                options:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    a.b:
+                      type: string
+      responses:
+        '200':
+          description: OK
+  /xml:
+    post:
+      operationId: postXml
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /root:
+    post:
+      operationId: postRoot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 3
+              items:
+                type: string
+      responses:
+        '200':
+          description: OK
+  /tags:
+    get:
+      operationId: getTags
+      parameters:
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: OK
+  /bracketed:
+    get:
+      operationId: getBracketed
+      parameters:
+        - name: filter
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              'a[b]':
+                type: integer
+      responses:
+        '200':
+          description: OK
+  /optional-form:
+    post:
+      operationId: postOptionalForm
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [a]
+              properties:
+                a:
+                  type: string
+                b:
+                  type: string
+      responses:
+        '200':
+          description: OK

@@ -12,9 +12,12 @@ use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Data\NewUserPartialInputDto;
 use Gcob\LaraSpecFirst\Tests\Fixtures\Generated\Requests\UpdateUserRequest;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /*
@@ -650,3 +653,159 @@ it('builds each value of a map property, keeping its keys', function (): void {
         ->and($written['labels'])->toBe(['x' => ['text' => 'hello']])
         ->and($written['counts'])->toBe([2024 => 5, 'b' => 6]);
 });
+
+/**
+ * What Laravel's boot does with `config('app.timezone')`: PHP's default timezone, which `now()` uses and Eloquent reads
+ * a stored date in. Both are set here, so a test says which one a generated DTO follows.
+ */
+function useAppTimezone(string $timezone, ?string $config = null): void
+{
+    config(['app.timezone' => $config ?? $timezone]);
+    date_default_timezone_set($timezone);
+}
+
+afterEach(function (): void {
+    date_default_timezone_set('UTC');
+});
+
+// Why: Eloquent's `datetime` cast keeps the clock digits of a value and drops its offset, so a request `date-time` that
+// kept the client's offset was stored hours off. The property is set to the app timezone when the DTO is built and
+// `toArray()` writes what the property holds, so the two never disagree (card #241, ADR 0025).
+it('reads a date-time in the app timezone and writes that same value', function (string $timezone, string $sent, string $written): void {
+    useAppTimezone($timezone);
+
+    $dto = NewUserInputDto::from(multipartPayload(['seen_at' => $sent]));
+    $seenAt = $dto->seen_at;
+
+    expect($seenAt)->toBeInstanceOf(CarbonImmutable::class);
+    assert($seenAt instanceof CarbonImmutable);
+    expect($seenAt->getTimezone()->getName())->toBe($timezone)
+        ->and($seenAt->equalTo(CarbonImmutable::parse($sent)))->toBeTrue()
+        ->and($dto->toArray()['seen_at'])->toBe($written)
+        ->and($dto->toArray()['seen_at'])->toBe($seenAt->format('Y-m-d\TH:i:s.uP'));
+})->with([
+    'an offset in a UTC app' => ['UTC', '2026-12-01T19:00:00.123456-05:00', '2026-12-02T00:00:00.123456+00:00'],
+    'another offset in Toronto' => ['America/Toronto', '2026-12-01T19:00:00+02:00', '2026-12-01T12:00:00.000000-05:00'],
+    'UTC in a Toronto summer' => ['America/Toronto', '2026-07-01T12:00:00Z', '2026-07-01T08:00:00.000000-04:00'],
+    'nine fraction digits' => ['UTC', '2026-10-03T13:52:51.123456789Z', '2026-10-03T13:52:51.123456+00:00'],
+]);
+
+// Why: the timezone is set where the value is built, so a date-time nested in an object, in a list or in a map is set
+// like a property is. A `date` is a calendar day and has no timezone to set (card #241, ADR 0025).
+it('sets a date-time nested in an object, in a list and in a map to the app timezone', function (array $sent, array $path, ?string $expected): void {
+    useAppTimezone('America/Toronto');
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RequestDateTimes';
+    generatedFrom('request-date-times.yaml', $namespace);
+
+    $dto = dtoOfPost(generatedClass($namespace, 'Requests\\CreateEventRequest'), [
+        'title' => 'Gala',
+        'starts_at' => '2026-12-01T19:00:00+02:00',
+        ...$sent,
+    ]);
+    $key = implode('.', $path);
+    $value = dtoAt($dto, ...array_map(static fn (string $step): string|int => ctype_digit($step) ? (int) $step : $step, $path));
+    $written = data_get($dto instanceof Arrayable ? $dto->toArray() : [], $key);
+
+    if ($expected !== null) {
+        expect($written)->toBe($expected);
+
+        return;
+    }
+
+    if (data_get($sent, $key) === null) {
+        expect($value)->toBeNull()->and($written)->toBeNull();
+
+        return;
+    }
+
+    expect($value)->toBeInstanceOf(CarbonImmutable::class);
+    assert($value instanceof CarbonImmutable);
+    expect($value->getTimezone()->getName())->toBe('America/Toronto')
+        ->and($value->equalTo(CarbonImmutable::parse(data_get($sent, $key))))->toBeTrue()
+        ->and($written)->toBe($value->format('Y-m-d\TH:i:s.uP'));
+})->with([
+    'a property' => [['starts_at' => '2026-12-01T19:00:00+02:00'], ['starts_at'], null],
+    'a nested object' => [['venue' => ['opens_at' => '2026-12-01T19:00:00+02:00']], ['venue', 'opens_at'], null],
+    'a list of objects' => [['sessions' => [['starts_at' => '2026-12-01T19:00:00+02:00']]], ['sessions', '0', 'starts_at'], null],
+    'a list' => [['reminders' => ['2026-12-01T19:00:00Z']], ['reminders', '0'], null],
+    'a nullable list item' => [['alarms' => [null, '2026-12-01T19:00:00+02:00']], ['alarms', '1'], null],
+    'a null list item' => [['alarms' => [null, '2026-12-01T19:00:00+02:00']], ['alarms', '0'], null],
+    'a nullable map value' => [['seen' => ['first' => '2026-12-01T19:00:00+02:00', 'gone' => null]], ['seen', 'first'], null],
+    'a null map value' => [['seen' => ['first' => '2026-12-01T19:00:00+02:00', 'gone' => null]], ['seen', 'gone'], null],
+    'a nullable property' => [['closes_at' => null], ['closes_at'], null],
+    'a date' => [['day' => '2026-12-01'], ['day'], '2026-12-01'],
+]);
+
+// Why: a body that is a map carries its values whole under `additionalProperties`, and each one is set to the app
+// timezone, keys kept (card #241, ADR 0025).
+it('sets each date-time of a map body to the app timezone', function (): void {
+    useAppTimezone('America/Toronto');
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RequestDateTimes';
+    generatedFrom('request-date-times.yaml', $namespace);
+
+    $dto = dtoOfPost(generatedClass($namespace, 'Requests\\CreateScheduleRequest'), [
+        'opening' => '2026-12-01T19:00:00+02:00',
+        'closing' => '2026-12-01T22:00:00Z',
+    ]);
+    $values = dtoAt($dto, 'additionalProperties');
+
+    expect($values)->toBeArray()->and(array_keys((array) $values))->toBe(['opening', 'closing']);
+
+    foreach ((array) $values as $key => $value) {
+        expect($value)->toBeInstanceOf(CarbonImmutable::class);
+        assert($value instanceof CarbonImmutable);
+        expect($value->getTimezone()->getName())->toBe('America/Toronto')
+            ->and($value->equalTo(CarbonImmutable::parse($key === 'opening' ? '2026-12-01T19:00:00+02:00' : '2026-12-01T22:00:00Z')))->toBeTrue();
+    }
+
+    expect($dto instanceof Arrayable ? $dto->toArray() : null)->toBe([
+        'opening' => '2026-12-01T12:00:00.000000-05:00',
+        'closing' => '2026-12-01T17:00:00.000000-05:00',
+    ]);
+});
+
+// Why: the proof that matters is the stored value, not the string. A `datetime` cast writes the clock digits it is
+// given, so `create($dto->toArray())` is right only when those digits are in the timezone Eloquent reads a stored date
+// in, which is PHP's default, and not the config's when the two differ at run time (card #241, ADR 0025).
+it('stores the right instant through a model\'s datetime cast', function (string $timezone, string $config, string $sent, string $stored): void {
+    useAppTimezone($timezone, $config);
+    config([
+        'database.connections.request_date_times' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+        'database.default' => 'request_date_times',
+    ]);
+    DB::purge('request_date_times');
+    Schema::create('events', static function ($table): void {
+        $table->id();
+        $table->string('title');
+        $table->dateTime('starts_at');
+    });
+    $model = new class extends Model
+    {
+        protected $table = 'events';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+
+        /** @return array<string, string> */
+        protected function casts(): array
+        {
+            return ['starts_at' => 'datetime'];
+        }
+    };
+
+    $namespace = 'Gcob\\LaraSpecFirst\\Tests\\Generated\\RequestDateTimes';
+    generatedFrom('request-date-times.yaml', $namespace);
+    $dto = dtoOfPost(generatedClass($namespace, 'Requests\\CreateEventRequest'), ['title' => 'Gala', 'starts_at' => $sent]);
+    $created = $model->newQuery()->create($dto instanceof Arrayable ? $dto->toArray() : []);
+    $readBack = $created->fresh()?->getAttribute('starts_at');
+
+    expect(DB::table('events')->value('starts_at'))->toBe($stored)
+        ->and($readBack)->toBeInstanceOf(DateTimeInterface::class);
+    assert($readBack instanceof DateTimeInterface);
+    expect(CarbonImmutable::instance($readBack)->equalTo(CarbonImmutable::parse($sent)))->toBeTrue();
+})->with([
+    'a UTC app' => ['UTC', 'UTC', '2026-12-01T19:00:00-05:00', '2026-12-02 00:00:00'],
+    'a Toronto app' => ['America/Toronto', 'America/Toronto', '2026-12-01T19:00:00+02:00', '2026-12-01 12:00:00'],
+    'a config changed only at run time' => ['America/Toronto', 'Asia/Tokyo', '2026-12-01T19:00:00+02:00', '2026-12-01 12:00:00'],
+]);
