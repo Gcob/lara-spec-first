@@ -213,7 +213,7 @@ final class RuleWalk
     public array $requiredOnceSent = [];
 
     /**
-     * Whether the body is required, is not a `PATCH`, is read as JSON and has a root that allows `null`: the one
+     * Whether the body is required, is not a partial body, is read as JSON and has a root that allows `null`: the one
      * required body whose required keys follow their siblings, like an optional body's, since `null` reaches the rules
      * as `[]`.
      */

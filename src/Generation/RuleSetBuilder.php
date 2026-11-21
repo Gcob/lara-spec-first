@@ -323,7 +323,7 @@ final readonly class RuleSetBuilder
             // the contract's own key, so the build would be choosing which half of the contract to enforce. Before
             // the skip below, so that a plain name the overlap leaves without a rule is refused all the same. A name
             // the body writes counts whether or not it has a rule of its own: one that only `required` names, in a body
-            // that may be absent or `null`, in a form or in a `PATCH`, is read from the query string all the same.
+            // that may be absent or `null`, in a form or in a partial body, is read from the query string all the same.
             if ($plan['plain']) {
                 if (isset($walk->formHeads[$parameter->name])) {
                     $bodyName = $walk->formHeads[$parameter->name][0];
@@ -3669,8 +3669,8 @@ final readonly class RuleSetBuilder
      * What the body's own root says that a rule set cannot act on, or that a reader would not guess from the rules.
      *
      * A root that is not an object records what it states, on `The body itself`, and an optional form body records the
-     * names it asks only beside another key. The `PATCH` reading and the empty form are information, like the `PUT`
-     * one. Each finding is written as the kind it is, in the order the body reads.
+     * names it asks only beside another key. The partial-body reading and the empty form are information, like the
+     * `PUT` one. Each finding is written as the kind it is, in the order the body reads.
      */
     private static function rootFindings(Operation $operation, Schema $schema, RequestBody $body, RuleWalk $walk): void
     {

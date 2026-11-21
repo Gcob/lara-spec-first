@@ -628,9 +628,10 @@ tags: [versions, conventions, planning]
   `requests.patch` set to `partial` lifts it too.
 - **A JSON Patch beside a merge patch is judged by the merge patch's rules, so a JSON Patch document answers `422`;**
   the doctor counts it. Reading, skipping or refusing a body in a media type the package doesn't read, beside one it
-  reads, is not decided yet.
+  reads, is [#247](https://github.com/Gcob/lara-spec-first/issues/247)'s.
 - **A merge patch declared over another schema than its JSON or form sibling is not read,** and is judged by the
   sibling's rules on its real content; the doctor counts it. Describe both media types with one schema.
+  [#247](https://github.com/Gcob/lara-spec-first/issues/247) decides whether it should be judged that way at all.
 
 ## [0.2.0] - 2026-11-15
 

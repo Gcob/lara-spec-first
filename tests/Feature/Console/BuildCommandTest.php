@@ -276,7 +276,7 @@ it('warns about a body declared only in a media type it does not read', function
 
 // The warning tells a reader what to add to serve the body, so it names every media type that is read: a `PATCH` body
 // is most naturally a merge patch.
-it('names application/merge-patch+json in the warning about a body declared only in a media type it does not read', function (): void {
+it('names the merge patch media type, application/merge-patch+json, in the warning about a body declared only in a media type it does not read', function (): void {
     config()->set('lara-spec-first.spec.path', specFixturePath('unread-body.yaml'));
 
     $output = new BufferedOutput;

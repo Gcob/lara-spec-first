@@ -2179,8 +2179,9 @@ it('counts a nested object a merge patch requires names of', function (
     array $unenforced,
     string $method,
     string $mediaType,
+    array $query = [],
 ): void {
-    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: [$mediaType => $body]), new RuleSetOptions);
+    $set = RuleSetBuilder::for(operationWithInput(method: $method, content: [$mediaType => $body], query: array_values($query)), new RuleSetOptions);
 
     expect($set->unenforced)->toBe($unenforced)
         ->and($set->leavesUnenforced())->toBe($unenforced !== []);
@@ -2206,6 +2207,11 @@ it('counts a nested object a merge patch requires names of', function (
         ],
         'a nested object that requires nothing' => [
             objectSchema(['address' => $address([])]), [], 'patch', 'application/merge-patch+json',
+        ],
+        // A query string is never merged into anything: the merge patch is the body's media type only.
+        'a deepObject query parameter that requires names, beside a merge patch' => [
+            objectSchema(['name' => $text]), [], 'patch', 'application/merge-patch+json',
+            [new QueryParameter('filter', objectSchema(['range' => $address(['city', 'street'])], ['range']), required: true, style: 'deepObject', explode: true)],
         ],
     ];
 });

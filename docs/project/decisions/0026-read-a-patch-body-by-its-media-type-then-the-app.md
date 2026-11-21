@@ -30,13 +30,13 @@ tags: [decisions, code-generation, openapi]
 >   cannot disagree.
 > - A merge patch declared beside another read media type over one schema is read by that other type, and a reading the
 >   merge patch would not choose is a counted gap. Over another schema, the merge patch stays unread and counted.
->   `application/json-patch+json` stays unread, and a JSON Patch document answers `422` where a read type sits beside
->   it.
+>   `application/json-patch+json` stays unread, and a JSON Patch document answers `422` beside a JSON type.
 > - Turned down: an `x-partial` extension, partial for both types when they disagree, branching the rules on
 >   `Content-Type`, refusing the build over two schemas, reading JSON Patch, and a reading by method alone.
 > - `0.2.0` let a merge patch through unchecked and without a generated request. It has both now, as the CHANGELOG says.
 
-**Status:** Accepted · **Card:** [#217](https://github.com/Gcob/lara-spec-first/issues/217)
+**Status:** Accepted · **Card:** [#217](https://github.com/Gcob/lara-spec-first/issues/217) · **Pull request:**
+[#255](https://github.com/Gcob/lara-spec-first/pull/255)
 
 ## Context
 
@@ -69,8 +69,9 @@ counts that as information, since a partial update is what the method means. Thr
 A merge patch is partial on every method, since the document is what is partial and RFC 7396 does not tie it to `PATCH`:
 
 - Every top-level property is `sometimes`, and `dto()` returns the partial type.
-- The generated file says so as information, naming the media type and the required list it read as empty. Nothing is
-  counted, so the build warning and the doctor's exit code do not move.
+- The generated file says so as information, naming the media type and the required list it read as empty. No top-level
+  property is counted, so the build warning and the doctor's exit code move only for a nested object that requires names
+  (below).
 - A value that is sent is judged as the schema says. `null` for a property the schema does not allow it for is refused
   (`{"name": null}` answers `422`), though RFC 7396 reads it as removing the key: the package reads `null` as a value,
   never as a removal.
@@ -114,8 +115,9 @@ longer reads the method. The rules and the DTO answer one question in one place,
 `application/json` or a form over the same schema (`sameShapeAs()`) is one rule set, and one rule set cannot read a
 required list two ways:
 
-- If the other type reads the list as empty (`application/json` on a `PATCH` under `partial`), both are partial, and
-  nothing is counted beyond the sentence the other type already writes.
+- If the other type reads the list as empty (`application/json` on a `PATCH` under `partial`), both are partial, and no
+  top-level property is counted beyond the sentence the other type already writes (a nested object that requires names
+  is counted, as for a merge patch alone).
 - If it reads the list as written (a `POST` or a `PUT`, or a `PATCH` under `as_written`), the whole rule set does, and a
   merge patch that leaves a required name out answers `422`, though RFC 7396 lets it. That is a rule stricter than the
   contract for one of its clients, so it is counted and not left silent, as
