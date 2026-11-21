@@ -41,6 +41,16 @@ HTTP 501
 [Asserts]
 body contains "listEvents"
 
+# A `deepObject` query parameter is checked by its brackets: `filter[from]` is a
+# date, so a word there is a 422 on that key, before a line of code exists.
+GET {{host}}/events
+Accept: application/json
+[Query]
+filter[from]: yesterday
+HTTP 422
+[Asserts]
+jsonpath "$.errors['filter.from']" exists
+
 GET {{host}}/events/1
 Accept: application/json
 HTTP 501

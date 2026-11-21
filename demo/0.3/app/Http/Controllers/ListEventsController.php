@@ -16,9 +16,9 @@ class ListEventsController extends \App\Http\Generated\Controllers\ListEventsCon
      */
     public function routeAction(ListEventsRequest $request): array
     {
-        // A query parameter is not part of the DTO: it is read with `validated('name')`.
-        $city = $request->validated('city');
-        $from = $request->validated('from');
+        // A query parameter is not part of the DTO: `filter` is read with `validated()`, nested as the client wrote it.
+        $city = $request->validated('filter.city');
+        $from = $request->validated('filter.from');
 
         return Event::query()
             ->when($city !== null, fn ($query) => $query->where('city', $city))

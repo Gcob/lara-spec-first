@@ -13,7 +13,7 @@ demo/run.sh 0.3            # after
 ## What 0.3 shows
 
 The same six operations as [the 0.2 demo](../0.2), each with its `x-controller`. [`openapi.yaml`](./openapi.yaml) is the
-contract, copied to the app as it is, and only its version changed. The scenarios are in [`scenarios/`](./scenarios), and
+contract, copied to the app as it is, with one change: `listEvents` takes a `filter` parameter. The scenarios are in [`scenarios/`](./scenarios), and
 every request sends `Accept: application/json`, since a failed validation answers a redirect without it
 ([why](https://github.com/Gcob/lara-spec-first/blob/v0.3.0/docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
 
@@ -21,7 +21,8 @@ What is new is in the controllers: each one returns the response DTO of its oper
 
 - **`01-before-the-code.hurl`:** `spec:build` and `spec:make --all --yes` have run, and nobody has written a controller.
   A good request to each of the six operations reaches the generated controller and gets a `501` that names the
-  operation. A body without `title` never gets there: it is a `422` on `title`. The contract alone already answers.
+  operation. A body without `title` never gets there: it is a `422` on `title`, and a `filter[from]` that is not a date
+  is a `422` on `filter.from`. The contract alone already answers, brackets included.
 - **`02-create-an-event.hurl`:** `createEvent` stores an event and `getEvent` reads it back. An answer has exactly the
   contract's five fields and no `created_at`, since the DTO is the shape of the answer and the model is not. The `201`
   is the contract's: the generated parent sends it, and the controller never writes it. A `starts_at` sent with an
@@ -31,9 +32,12 @@ What is new is in the controllers: each one returns the response DTO of its oper
   A missing `title`, a `capacity` of `"many"` and a `capacity` of `"3"` are each a `422` on their field, because a JSON
   body keeps its types. A `capacity` of `40.0` is a whole number, so it is accepted and answers `40`, and `2.5` is a
   `422`. An id nobody created is a `404`, from the controller.
-- **`03-find-events.hurl`:** `listEvents` takes `city` and `from` as plain query parameters. The code reads them with
-  `validated('city')`. `from=yesterday` is a `422` on `from`. A `starts_at` sent with an offset is the same instant as
-  its UTC time, so the filter and the answer agree on the day.
+- **`03-find-events.hurl`:** `listEvents` takes one `deepObject` query parameter, `filter`, with `city` and `from`. The
+  scenario sends `filter[city]`, `filter[from]` and both together, and the code reads them with
+  `validated('filter.city')` and `validated('filter.from')`, nested as the client wrote them. `filter[from]=yesterday`
+  is a `422` on `filter.from`. The contract closes `filter`, so `filter[venue]` is a `422` on `filter`, with Laravel's
+  own message for an array that has keys it does not allow: `The filter field must be an array.`. A `starts_at` sent
+  with an offset is the same instant as its UTC time, so the filter and the answer agree on the day.
 - **`04-upload-a-cover.hurl`:** `uploadEventCover` takes a `multipart/form-data` body with one file part. A PNG is
   stored and the answer is a `CoverDto`. A text file, or a form with no `cover`, is a `422` on `cover`. A file with a PHP
   extension is refused even when it says it is a PNG, which is Laravel's own rule, stated in the generated request. The
@@ -48,7 +52,7 @@ controller per operation that replaces the scaffold `spec:make` wrote.
 
 ## From 0.2 to 0.3
 
-The contract is the same, so the scenarios that applied still pass. What changed is the code a developer writes, because
+The contract is the same, except for the list's query. What changed is the code a developer writes, because
 `routeAction` now returns what the contract's success status carries
 ([the signature is the contract](https://github.com/Gcob/lara-spec-first/blob/v0.3.0/docs/guide/controllers.md#the-signature-is-the-contract)).
 
@@ -64,8 +68,13 @@ The contract is the same, so the scenarios that applied still pass. What changed
   answer, so the models say nothing about it.
 - **No UTC conversion:** 0.2's `createEvent` converted `starts_at` to UTC by hand. The request's DTO now holds it in the
   app's timezone, and the model stores it as it is.
-- **The scenarios:** 02 gains the `$.*` count, the absent `created_at`, and the `40.0` and `2.5` requests. 05 gains the
-  `409` message and the `$[0].*` count. The other three are 0.2's, unchanged.
+- **The list's query:** 0.2 read `?city=` and `?from=`. 0.3 reads `filter[city]` and `filter[from]`, one `deepObject`
+  parameter that the contract closes (`additionalProperties: false`). A client that still sends `?city=` now gets every
+  event, since a query name the contract does not declare is ignored, as Laravel does. On purpose, this demo
+  no longer exercises a plain `query` name: 0.2's `city` and `from` were its only ones.
+- **The scenarios:** 01 gains the `filter[from]` refusal. 02 gains the `$.*` count, the absent `created_at`, and the
+  `40.0` and `2.5` requests. 03 sends every filter through a `[Query]` section. 05 gains the `409` message and the
+  `$[0].*` count. 04 is 0.2's, unchanged.
 
 An app that upgrades from 0.2 gets a hint: `spec:build` names every custom controller whose `routeAction` fell behind its
 parent, with the signature to paste, and the build still succeeds. This demo never prints it, since its controllers are
@@ -75,7 +84,6 @@ copied after the build. The same section of the guide says what it prints.
 
 Each of these is outside `0.3.0`, so this folder neither shows it nor asserts it.
 
-- **`filter[city]`:** the list still filters with plain `city` and `from`.
 - **A `404` from the contract:** before the code, `GET /events/abc` answers `501`. The `404` for an event that does not
   exist is the controller's, since the model layer that would give it comes with `x-model` (Lot 3,
   [#95](https://github.com/Gcob/lara-spec-first/issues/95)).

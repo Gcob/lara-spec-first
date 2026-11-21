@@ -26,16 +26,20 @@ Content-Type: application/json
 HTTP 201
 
 # `city` keeps the events of that city.
-GET {{host}}/events?city=Gatineau
+GET {{host}}/events
 Accept: application/json
+[Query]
+filter[city]: Gatineau
 HTTP 200
 [Asserts]
 jsonpath "$[?(@.title == 'Gatineau PHP night')]" exists
 jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" not exists
 
 # `from` keeps the events that start on that day or later.
-GET {{host}}/events?from=2027-03-01
+GET {{host}}/events
 Accept: application/json
+[Query]
+filter[from]: 2027-03-01
 HTTP 200
 [Asserts]
 jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
@@ -54,15 +58,29 @@ Content-Type: application/json
 }
 HTTP 201
 
-GET {{host}}/events?from=2026-12-02&city=Trois-Rivieres
+GET {{host}}/events
 Accept: application/json
+[Query]
+filter[from]: 2026-12-02
+filter[city]: Trois-Rivieres
 HTTP 200
 [Asserts]
 jsonpath "$[?(@.title == 'Trois-Rivieres late night')]" exists
 
 # `from` is a date: a word is a 422 on that parameter, and the code never runs.
-GET {{host}}/events?from=yesterday
+GET {{host}}/events
 Accept: application/json
+[Query]
+filter[from]: yesterday
 HTTP 422
 [Asserts]
-jsonpath "$.errors.from" exists
+jsonpath "$.errors['filter.from']" exists
+
+# The contract closes `filter`: a key it does not declare is a 422 on `filter`.
+GET {{host}}/events
+Accept: application/json
+[Query]
+filter[venue]: Olympic Stadium
+HTTP 422
+[Asserts]
+jsonpath "$.errors.filter" exists
