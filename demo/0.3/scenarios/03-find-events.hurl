@@ -1,6 +1,7 @@
-# Run after the folder's code is copied in: `listEvents` takes two optional
-# query parameters, `city` and `from`. A query parameter is checked like a body
-# field, and the code reads it with `validated('name')`.
+# Run after the folder's code is copied in: `listEvents` takes an optional
+# `filter` object, with `filter[city]` and `filter[from]` inside. A query
+# parameter is checked like a body field, and the code reads it with
+# `validated('filter.city')`.
 
 # Two events, a city and a date apart.
 POST {{host}}/events
@@ -25,7 +26,25 @@ Content-Type: application/json
 }
 HTTP 201
 
-# `city` keeps the events of that city.
+# No filter: every event.
+GET {{host}}/events
+Accept: application/json
+HTTP 200
+[Asserts]
+jsonpath "$[?(@.title == 'Gatineau PHP night')]" exists
+jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
+
+# A plain `city` is not the declared `filter[city]`: the code never sees it, and
+# the answer is every event.
+GET {{host}}/events
+Accept: application/json
+[Query]
+city: Gatineau
+HTTP 200
+[Asserts]
+jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
+
+# `filter[city]` keeps the events of that city.
 GET {{host}}/events
 Accept: application/json
 [Query]
@@ -35,7 +54,7 @@ HTTP 200
 jsonpath "$[?(@.title == 'Gatineau PHP night')]" exists
 jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" not exists
 
-# `from` keeps the events that start on that day or later.
+# `filter[from]` keeps the events that start on that day or later.
 GET {{host}}/events
 Accept: application/json
 [Query]
@@ -45,8 +64,9 @@ HTTP 200
 jsonpath "$[?(@.title == 'Sherbrooke Laravel day')]" exists
 jsonpath "$[?(@.title == 'Gatineau PHP night')]" not exists
 
-# `from` compares days in UTC, and `starts_at` is an instant: 22:00 on December
-# 1st at -05:00 is already December 2nd at Z, so `from=2026-12-02` keeps it.
+# `filter[from]` compares days in UTC, and `starts_at` is an instant: 22:00 on
+# December 1st at -05:00 is already December 2nd at Z, so
+# `filter[from]=2026-12-02` keeps it.
 POST {{host}}/events
 Accept: application/json
 Content-Type: application/json
@@ -67,7 +87,8 @@ HTTP 200
 [Asserts]
 jsonpath "$[?(@.title == 'Trois-Rivieres late night')]" exists
 
-# `from` is a date: a word is a 422 on that parameter, and the code never runs.
+# `filter[from]` is a date: a word is a 422 on that parameter, and the code never
+# runs.
 GET {{host}}/events
 Accept: application/json
 [Query]

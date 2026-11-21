@@ -13,8 +13,9 @@ demo/run.sh 0.3            # after
 ## What 0.3 shows
 
 The same six operations as [the 0.2 demo](../0.2), each with its `x-controller`. [`openapi.yaml`](./openapi.yaml) is the
-contract, copied to the app as it is, with one change: `listEvents` takes a `filter` parameter. The scenarios are in [`scenarios/`](./scenarios), and
-every request sends `Accept: application/json`, since a failed validation answers a redirect without it
+contract, copied to the app as it is, with one change: `listEvents` takes a `filter` parameter. The scenarios are in
+[`scenarios/`](./scenarios), and every request sends `Accept: application/json`, since a failed validation answers a
+redirect without it
 ([why](https://github.com/Gcob/lara-spec-first/blob/v0.3.0/docs/guide/code-generation/request-validation.md#what-a-client-gets-when-a-request-is-refused)).
 
 What is new is in the controllers: each one returns the response DTO of its operation, and nothing else.
