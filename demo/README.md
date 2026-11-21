@@ -88,3 +88,6 @@ not a Composer dependency, so `run.sh` checks that it is installed and CI instal
 
 - [`0.2/`](./0.2): the first demo. Six operations: events with a filtered list and a cover upload, and RSVPs with a full
   event refused. Validated before any code exists.
+- [`0.3/`](./0.3): the second demo. The same six operations, with every controller returning its response DTO, so an
+  answer has the contract's shape and the parent sends the contract's status. A request `date-time` arrives in the app's
+  timezone, a whole float is a valid integer, and the list filters with a `deepObject` query parameter, `filter[city]`.
