@@ -105,10 +105,10 @@ working in a plain unit test or a script, and a generated DTO still depends on n
   format (a cast's default), in the value's own timezone, which `from()` has set to the app's, so
   `insert(['starts_at' => $dto->starts_at])` stores what `Model::create()` stores. `insert($dto->toArray())` hands the
   database the string as written, and each engine measured treats it differently. SQLite 3.53 keeps it as text, offset
-  and all, and SQL compares it as text, so a `<=` at the same instant misses the stored value. PostgreSQL 16 on a
-  `timestamp without time zone` column (Laravel's `dateTime()`) drops the offset and keeps the clock, where a
-  `with time zone` column (`dateTimeTz()`, `timestampTz()`) reads it. MariaDB 11.8 in strict mode, Laravel's default,
-  refuses it. The guide says so.
+  and all, and SQL compares it as text, so a `<=` at the same instant misses the stored value (measured against the same
+  clock written as `Y-m-d H:i:s`). PostgreSQL 16 on a `timestamp without time zone` column (Laravel's `dateTime()`)
+  drops the offset and keeps the clock, where a `with time zone` column (`dateTimeTz()`, `timestampTz()`) reads it.
+  MariaDB 11.8 in strict mode, Laravel's default, refuses it. The guide says so.
 - **The hour that repeats in the fall stays Eloquent's.** In a timezone with daylight saving time, a cast stores a clock
   time and reads it back in the first hour it meets, so `2026-11-01T06:30:00Z` (01:30 EST in Toronto) is stored as
   `2026-11-01 01:30:00` and reads back as 01:30 EDT. Any value the cast stores in a non-UTC app has this, whatever the
